@@ -47,7 +47,6 @@
     .controls { padding: 12px 14px; display: grid; gap: 12px; }
     .row { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 10px; }
     .muted { color: var(--muted); font-size: 12px; }
-    .u-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
     .drop { display: grid; place-items: center; padding: 18px; text-align: center; gap: 10px; border: 2px dashed #2a3547; border-radius: 14px; color: var(--muted); background: #0c1017; cursor: pointer; min-height: 120px; }
     .drop.drag { border-color: var(--accent); color: var(--text); background: #0d1320; }
     :root[data-theme="light"] .drop { background: #f2f6fb; border-color: #c9d5e3; }
@@ -406,12 +405,18 @@
           </svg>
         </button>
 
-        <div class="u-grid">
-          <button id="webmBtn" class="btn-primary" disabled>Generate WebM</button>
-          <button id="goBtn" class="btn-primary" disabled>Generate GIF</button>
+        <div class="row" style="grid-template-columns: 1fr 1fr 1fr;">
+          <button id="webpBtn" class="btn-primary" disabled>Export WebP</button>
+          <button id="webmBtn" class="btn-primary" disabled>Export WebM</button>
+          <button id="goBtn" class="btn-primary" disabled>Export GIF</button>
+        </div>
+        <div class="row" style="grid-template-columns: 1fr 1fr;">
           <button id="resetBtn" class="btn-ghost" disabled>Reset</button>
           <button id="devToggleBtn" class="btn-ghost" aria-controls="devPanel" aria-expanded="false" title="Toggle dev panel">Dev</button>
         </div>
+        </div>
+
+        
 
         <div id="devPanel">
           <div class="muted" style="margin-bottom:6px">Dev (toggle with <strong>Ctrl/⌘ + D</strong> or the <strong>Dev</strong> button)</div>
@@ -520,6 +525,7 @@ window._gifWorkerURL = (function() {
   return URL.createObjectURL(blob);
 })();
   </script>
+  <script src="js/ffmpeg.min.js"></script>
 
   <script>
   // ---------- UI Helpers ----------
@@ -552,6 +558,7 @@ window._gifWorkerURL = (function() {
   const devLog = el('devLog');
   const palPresetSeg = el('palPresetSeg');
   const palQuality = el('palQuality');
+  const webpBtn = el('webpBtn');
   const webmBtn = el('webmBtn');
   const srcPreview = el('srcPreview');
   const encoderSeg = el('encoderSeg');
@@ -611,6 +618,11 @@ window._gifWorkerURL = (function() {
   // Presets
   makeSeg(palPresetSeg, PALETTE_PRESETS.map(p=>p.v), v => PALETTE_PRESETS.find(p=>p.v===v).label, v => {
     nqSample = v;
+    // Map WebP quality to preset: Fast=60, Balanced=75, Film=95
+    const label = PALETTE_PRESETS.find(p=>p.v===v)?.label || '';
+    if (label === 'Fast') webpQuality = 60;
+    else if (label === 'Balanced') webpQuality = 75;
+    else if (label === 'Film') webpQuality = 95;
   }, nqSample);
 
   // Encoder options
@@ -618,8 +630,8 @@ window._gifWorkerURL = (function() {
     chosenEncoder = v;
   }, chosenEncoder);
 
-  // WebP quality options
-  // WebP quality UI removed
+  // WebP quality mapped to palette preset (Fast=60, Balanced=75, Film=95)
+  let webpQuality = 75;
 
   // Dithering dropdown
   ditherSelect?.addEventListener('change', (e) => {
@@ -858,9 +870,9 @@ window._gifWorkerURL = (function() {
     srcFpsEstimate = await estimateFps(video).catch(()=>null);
     metaFps.textContent = srcFpsEstimate ? `${srcFpsEstimate.toFixed(2)} fps` : '—';
 
-    setStatus('Ready. Choose settings and click Generate WebM or Generate GIF.', 0);
+    setStatus('Ready. Choose settings and click Generate WebP/WebM or Generate GIF.', 0);
     enableConvert(true);
-    // Enable WebM export if supported
+    if (webpBtn){ webpBtn.disabled = false; }
     if (webmBtn){ webmBtn.disabled = !canExportWebM(); }
     
   }
@@ -940,6 +952,7 @@ window._gifWorkerURL = (function() {
     
     setStatus('Waiting for a video…', 0);
     enableConvert(false); clearPreview(); enableReset(false);
+    if (webpBtn){ webpBtn.disabled = true; }
     if (webmBtn){ webmBtn.disabled = true; }
     
   });
@@ -1507,7 +1520,132 @@ window._gifWorkerURL = (function() {
     rec.stop();
   });
 
-  // WebP export removed
+  // ---------- WebP export (animated via ffmpeg.wasm) ----------
+  let _ffmpeg = null;
+  let _ffmpegFetchFile = null;
+  async function ensureFFmpeg(){
+    if (!_ffmpeg){
+      const api = window.FFmpeg || window.ffmpeg || {};
+      const createFFmpeg = api.createFFmpeg || (api.FFmpeg && api.FFmpeg.createFFmpeg);
+      const fetchFile = api.fetchFile || (api.FFmpeg && api.FFmpeg.fetchFile);
+      _ffmpeg = createFFmpeg ? createFFmpeg({ log: false, corePath: 'js/ffmpeg-core.js' }) : null;
+      _ffmpegFetchFile = fetchFile || null;
+    }
+    if (!_ffmpeg) throw new Error('ffmpeg.wasm not available');
+    if (!_ffmpeg.isLoaded()){
+      setStatus('Loading encoder…', 0.02);
+      await _ffmpeg.load();
+    }
+  }
+
+  webpBtn?.addEventListener('click', async ()=>{
+    if (!video.src) return;
+    enableConvert(false);
+    webpBtn.disabled = true;
+
+    try{
+      await ensureFFmpeg();
+    }catch(e){
+      setStatus('err', 'Failed to load encoder', 1);
+      webpBtn.disabled = false; enableConvert(true); return;
+    }
+
+    const targetFPS = Number(chosenFps);
+    const scale = Number(chosenScale);
+
+    // Compute crop/output dimensions
+    let sourceX, sourceY, sourceWidth, sourceHeight;
+    let width, height;
+    if (cropEnabled && cropRegion) {
+      sourceX = Math.round(cropRegion.x * video.videoWidth);
+      sourceY = Math.round(cropRegion.y * video.videoHeight);
+      sourceWidth = Math.round(cropRegion.width * video.videoWidth);
+      sourceHeight = Math.round(cropRegion.height * video.videoHeight);
+      width = Math.max(1, Math.round(sourceWidth * scale));
+      height = Math.max(1, Math.round(sourceHeight * scale));
+    } else {
+      sourceX = 0; sourceY = 0; sourceWidth = video.videoWidth; sourceHeight = video.videoHeight;
+      width = Math.max(1, Math.round(video.videoWidth * scale));
+      height = Math.max(1, Math.round(video.videoHeight * scale));
+    }
+
+    const fileDur = duration && isFinite(duration) ? duration : (isFinite(video.duration)?video.duration:0);
+    let start = Math.max(0, Math.min(fileDur || 0, parseFloat(startTimeInput?.value)||0));
+    let end = Math.max(start, Math.min(fileDur || 0, parseFloat(endTimeInput?.value)||fileDur));
+    const minSpan = 1/Math.max(1, targetFPS);
+    if ((end - start) < minSpan) end = Math.min(fileDur, start + minSpan);
+    const span = Math.max(minSpan, (end - start) || minSpan);
+
+    // Build filter graph
+    const vf = [];
+    if (cropEnabled && cropRegion){
+      vf.push(`crop=${sourceWidth}:${sourceHeight}:${sourceX}:${sourceY}`);
+    }
+    vf.push(`fps=${targetFPS}`);
+    vf.push(`scale=${width}:${height}:flags=neighbor`);
+    const vfArg = vf.join(',');
+
+    // Prepare input
+    const inExt = (sourceFile && sourceFile.name && sourceFile.name.split('.').pop()) || 'mp4';
+    const inName = `input.${inExt}`;
+    const outName = 'out.webp';
+
+    try{
+      setStatus('Preparing encoder…', 0.04);
+      try { _ffmpeg.FS('unlink', inName); }catch{}
+      try { _ffmpeg.FS('unlink', outName); }catch{}
+      const data = _ffmpegFetchFile ? await _ffmpegFetchFile(sourceFile) : new Uint8Array(await sourceFile.arrayBuffer());
+      _ffmpeg.FS('writeFile', inName, data);
+
+      // Progress callback
+      if (_ffmpeg.setProgress){
+        _ffmpeg.setProgress(({ ratio }) => {
+          const p = Math.max(0, Math.min(1, ratio||0));
+          setStatus(`Encoding WebP… ${Math.round(p*100)}%`, 0.1 + p*0.85);
+        });
+      }
+
+      const args = [
+        '-hide_banner',
+        '-i', inName,
+        '-ss', start.toFixed(3),
+        '-t', span.toFixed(3),
+        '-vf', vfArg,
+        '-an',
+        '-c:v', 'libwebp',
+        '-q:v', String(webpQuality || 75),
+        '-loop', '0',
+        '-vsync', '0',
+        outName
+      ];
+
+      setStatus('Starting WebP encode…', 0.08);
+      await _ffmpeg.run(...args);
+
+      const out = _ffmpeg.FS('readFile', outName);
+      const blob = new Blob([out.buffer], {type: 'image/webp'});
+      const url = setOutput(blob, 'webp', 'image/webp');
+      setStatus(`WebP ready • ${(blob.size/1024/1024).toFixed(1)} MB`, 1);
+
+      // Update output metadata
+      updateOutputMetadata(blob, 'WebP', 'ffmpeg.wasm', width, height, targetFPS, span);
+
+      const img = new Image(); img.src = url; img.alt = 'Generated WebP';
+      preview.innerHTML = '';
+      preview.style.display = 'flex';
+      preview.style.alignItems = 'center';
+      preview.style.justifyContent = 'center';
+      preview.appendChild(img);
+    }catch(err){
+      console.error(err);
+      setStatus('err', 'WebP export failed', 1);
+    }finally{
+      try { _ffmpeg.FS('unlink', inName); }catch{}
+      try { _ffmpeg.FS('unlink', outName); }catch{}
+      webpBtn.disabled = false;
+      enableConvert(true);
+    }
+  });
 
   
 
