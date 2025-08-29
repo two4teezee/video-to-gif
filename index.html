@@ -47,7 +47,6 @@
     .controls { padding: 12px 14px; display: grid; gap: 12px; }
     .row { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 10px; }
     .muted { color: var(--muted); font-size: 12px; }
-    .u-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
     .drop { display: grid; place-items: center; padding: 18px; text-align: center; gap: 10px; border: 2px dashed #2a3547; border-radius: 14px; color: var(--muted); background: #0c1017; cursor: pointer; min-height: 120px; }
     .drop.drag { border-color: var(--accent); color: var(--text); background: #0d1320; }
     :root[data-theme="light"] .drop { background: #f2f6fb; border-color: #c9d5e3; }
@@ -370,12 +369,6 @@
           </div>
         </div>
         <div class="row">
-          <div class="control">
-            <label class="muted" style="font-size:13px">Quality (WebP)</label>
-            <div class="seg" id="qualitySeg"></div>
-          </div>
-        </div>
-        <div class="row">
           <div class="control" style="display: grid;">
             <label class="muted" style="font-size:13px">Dithering</label>
             <select id="ditherSelect">
@@ -412,13 +405,18 @@
           </svg>
         </button>
 
-        <div class="u-grid">
-          <button id="webmBtn" class="btn-primary" disabled>Generate WebM</button>
-          <button id="webpBtn" class="btn-primary" disabled>Generate WebP</button>
-          <button id="goBtn" class="btn-primary" disabled>Generate GIF</button>
+        <div class="row" style="grid-template-columns: 1fr 1fr 1fr;">
+          <button id="webpBtn" class="btn-primary" disabled>Export WebP</button>
+          <button id="webmBtn" class="btn-primary" disabled>Export WebM</button>
+          <button id="goBtn" class="btn-primary" disabled>Export GIF</button>
+        </div>
+        <div class="row" style="grid-template-columns: 1fr 1fr;">
           <button id="resetBtn" class="btn-ghost" disabled>Reset</button>
           <button id="devToggleBtn" class="btn-ghost" aria-controls="devPanel" aria-expanded="false" title="Toggle dev panel">Dev</button>
         </div>
+        </div>
+
+        
 
         <div id="devPanel">
           <div class="muted" style="margin-bottom:6px">Dev (toggle with <strong>Ctrl/⌘ + D</strong> or the <strong>Dev</strong> button)</div>
@@ -527,6 +525,7 @@ window._gifWorkerURL = (function() {
   return URL.createObjectURL(blob);
 })();
   </script>
+  <script src="js/ffmpeg.min.js"></script>
 
   <script>
   // ---------- UI Helpers ----------
@@ -559,8 +558,8 @@ window._gifWorkerURL = (function() {
   const devLog = el('devLog');
   const palPresetSeg = el('palPresetSeg');
   const palQuality = el('palQuality');
-  const webmBtn = el('webmBtn');
   const webpBtn = el('webpBtn');
+  const webmBtn = el('webmBtn');
   const srcPreview = el('srcPreview');
   const encoderSeg = el('encoderSeg');
   const ditherSelect = el('ditherSelect');
@@ -572,7 +571,6 @@ window._gifWorkerURL = (function() {
   const outputSize = el('outputSize');
   const outputDur = el('outputDur');
   const outputEncoder = el('outputEncoder');
-  const qualitySeg = el('qualitySeg');
 
   const FPS_OPTIONS = [5, 10, 12.5, 15, 30, 60];
   const SCALE_OPTIONS = [0.25, 0.5, 0.75, 1];
@@ -580,11 +578,10 @@ window._gifWorkerURL = (function() {
   let chosenScale = 1; // default
   const PALETTE_PRESETS = [{label:'Fast', v:20}, {label:'Balanced', v:10}, {label:'Film', v:3}];
   let nqSample = 3; // NeuQuant sample factor (lower = better quality) 
-  const ENCODER_OPTIONS = [{label:'gif.js', v:'gifjs'}, {label:'JavaScript', v:'js'}, {label:'FFmpeg', v:'ffmpeg'}];
+  const ENCODER_OPTIONS = [{label:'gif.js', v:'gifjs'}, {label:'JavaScript', v:'js'}];
   let chosenEncoder = 'gifjs'; // default to gif.js encoder 
   let chosenDither = 'FloydSteinberg'; // default dithering method 
-  const WEBP_QUALITY_OPTIONS = [30, 50, 75, 90];
-  let chosenWebpQuality = 75;
+  // WebP export removed; quality options not needed
 
   // Crop functionality variables
   let cropEnabled = false;
@@ -621,6 +618,11 @@ window._gifWorkerURL = (function() {
   // Presets
   makeSeg(palPresetSeg, PALETTE_PRESETS.map(p=>p.v), v => PALETTE_PRESETS.find(p=>p.v===v).label, v => {
     nqSample = v;
+    // Map WebP quality to preset: Fast=60, Balanced=75, Film=95
+    const label = PALETTE_PRESETS.find(p=>p.v===v)?.label || '';
+    if (label === 'Fast') webpQuality = 60;
+    else if (label === 'Balanced') webpQuality = 75;
+    else if (label === 'Film') webpQuality = 95;
   }, nqSample);
 
   // Encoder options
@@ -628,10 +630,8 @@ window._gifWorkerURL = (function() {
     chosenEncoder = v;
   }, chosenEncoder);
 
-  // WebP quality options
-  if (qualitySeg){
-    makeSeg(qualitySeg, WEBP_QUALITY_OPTIONS, v => `${v}`, v => { chosenWebpQuality = v; }, chosenWebpQuality);
-  }
+  // WebP quality mapped to palette preset (Fast=60, Balanced=75, Film=95)
+  let webpQuality = 75;
 
   // Dithering dropdown
   ditherSelect?.addEventListener('change', (e) => {
@@ -870,11 +870,11 @@ window._gifWorkerURL = (function() {
     srcFpsEstimate = await estimateFps(video).catch(()=>null);
     metaFps.textContent = srcFpsEstimate ? `${srcFpsEstimate.toFixed(2)} fps` : '—';
 
-    setStatus('Ready. Choose settings and click Generate WebM or Generate GIF.', 0);
+    setStatus('Ready. Choose settings and click Generate WebP/WebM or Generate GIF.', 0);
     enableConvert(true);
-    // Enable WebM export if supported
-    if (webmBtn){ webmBtn.disabled = !canExportWebM(); }
     if (webpBtn){ webpBtn.disabled = false; }
+    if (webmBtn){ webmBtn.disabled = !canExportWebM(); }
+    
   }
 
   async function estimateFps(video){
@@ -952,8 +952,9 @@ window._gifWorkerURL = (function() {
     
     setStatus('Waiting for a video…', 0);
     enableConvert(false); clearPreview(); enableReset(false);
-    if (webmBtn){ webmBtn.disabled = true; }
     if (webpBtn){ webpBtn.disabled = true; }
+    if (webmBtn){ webmBtn.disabled = true; }
+    
   });
 
   // ---------- Palette helpers ----------
@@ -1269,20 +1270,7 @@ window._gifWorkerURL = (function() {
       }
     }
 
-    // If FFmpeg is enabled, try that path first. Fall back to JS encoder on failure.
-    let ffmpegFailed = false;
-    if (chosenEncoder === 'ffmpeg'){
-      try{
-        await convertGifWithFfmpeg({width, height, targetFPS, startTime: startTimeInput?.value, endTime: endTimeInput?.value, fileDur, scale});
-        enableConvert(true);
-        return;
-      }catch(e){
-        console.error(e);
-        ffmpegFailed = true;
-        setStatus('warn', 'FFmpeg path failed, falling back to JS encoder…', 0.05);
-        // Don't return here - fall through to JS encoder
-      }
-    }
+    
 
     const enc = new GIFEncoder(width, height);
 
@@ -1410,11 +1398,7 @@ window._gifWorkerURL = (function() {
     const blob = enc.stream().getBlob();
     const url = setOutput(blob, 'gif', 'image/gif');
 
-    if (ffmpegFailed) {
-      setStatus('warn', `Done - encoded with JavaScript due to FFmpeg failure • ${(blob.size/1024/1024).toFixed(1)} MB`, 1);
-    } else {
-      setStatus(`Done • ${(blob.size/1024/1024).toFixed(1)} MB`, 1);
-    }
+    setStatus(`Done • ${(blob.size/1024/1024).toFixed(1)} MB`, 1);
     
     // Update output metadata
     const outputDuration = end - start;
@@ -1430,124 +1414,9 @@ window._gifWorkerURL = (function() {
     enableConvert(true);
   });
 
-  async function convertGifWithFfmpeg({width, height, targetFPS, startTime, endTime, fileDur, scale}){
-    if (!window._ffmpeg || !window._ffmpeg.ffmpeg) throw new Error('FFmpeg module not available');
-    if (!sourceFile) throw new Error('No source file');
+  
 
-    const start = Math.max(0, Math.min(fileDur || 0, parseFloat(startTime)||0));
-    const endBase = Math.max(start, Math.min(fileDur || 0, parseFloat(endTime)||fileDur));
-    const minSpan = 1/targetFPS; const end = (endBase - start) < minSpan ? Math.min(fileDur, start + minSpan) : endBase;
-    const ss = start.toFixed(2); const to = end.toFixed(2);
-
-    // Load FFmpeg core (first time is a large download)
-    await window._ffmpeg.loadFFMPEG((txt,p)=>setStatus(txt, p));
-    const ffmpeg = window._ffmpeg.ffmpeg;
-    const fetchFile = window._ffmpeg.fetchFile;
-
-    // Hook progress
-    let lastP = 0;
-    ffmpeg.on('progress', ({progress})=>{
-      if (typeof progress === 'number'){
-        const p = Math.max(0, Math.min(0.95, 0.1 + progress * 0.75));
-        if (p - lastP > 0.01){ setStatus('FFmpeg encoding…', p); lastP = p; }
-      }
-    });
-
-    // Prepare FS
-    const ext = (sourceFile.name && sourceFile.name.includes('.')) ? sourceFile.name.split('.').pop() : 'mp4';
-    const inName = `input.${ext}`;
-    const palName = 'palette.png';
-    const outName = 'out.gif';
-
-    setStatus('Preparing input…', 0.04);
-    await ffmpeg.writeFile(inName, await fetchFile(sourceFile));
-
-    // Pass 1: palette generation
-    setStatus('Generating palette…', 0.08);
-    const vfGen = `fps=${targetFPS},scale=${width}:${height}:flags=lanczos,palettegen=stats_mode=diff`; 
-    await ffmpeg.exec(['-ss', ss, '-to', to, '-i', inName, '-vf', vfGen, '-y', palName]);
-
-    // Pass 2: palette use (Floyd–Steinberg dithering)
-    setStatus('Encoding GIF…', 0.2);
-    const lavfi = `[0:v]fps=${targetFPS},scale=${width}:${height}:flags=lanczos[x];[x][1:v]paletteuse=dither=floyd_steinberg`;
-    await ffmpeg.exec(['-ss', ss, '-to', to, '-i', inName, '-i', palName, '-lavfi', lavfi, '-loop', '0', '-y', outName]);
-
-    const data = await ffmpeg.readFile(outName);
-    const blob = new Blob([data.buffer], {type:'image/gif'});
-    const url = setOutput(blob, 'gif', 'image/gif');
-    setStatus(`Done • ${(blob.size/1024/1024).toFixed(1)} MB`, 1);
-    
-    // Update output metadata
-    const outputDuration = end - start;
-    updateOutputMetadata(blob, 'GIF', 'FFmpeg', width, height, targetFPS, outputDuration);
-    
-    const img = new Image(); img.src = url; img.alt = 'Generated GIF (FFmpeg)';
-    preview.innerHTML = '';
-    preview.style.display = 'flex';
-    preview.style.alignItems = 'center';
-    preview.style.justifyContent = 'center';
-    preview.appendChild(img);
-  }
-
-  // ---------- WebP (animated) via FFmpeg (WebAssembly) ----------
-  async function convertWebPWithFfmpeg({width, height, targetFPS, startTime, endTime, fileDur, sourceX, sourceY, sourceWidth, sourceHeight, quality}){
-    if (!window._ffmpeg || !window._ffmpeg.ffmpeg) throw new Error('FFmpeg module not available');
-    if (!sourceFile) throw new Error('No source file');
-
-    const start = Math.max(0, Math.min(fileDur || 0, parseFloat(startTime)||0));
-    const endBase = Math.max(start, Math.min(fileDur || 0, parseFloat(endTime)||fileDur));
-    const minSpan = 1/targetFPS; const end = (endBase - start) < minSpan ? Math.min(fileDur, start + minSpan) : endBase;
-    const ss = start.toFixed(2); const to = end.toFixed(2);
-
-    // Load FFmpeg core if needed
-    await window._ffmpeg.loadFFMPEG((txt,p)=>setStatus(txt, p));
-    const ffmpeg = window._ffmpeg.ffmpeg;
-    const fetchFile = window._ffmpeg.fetchFile;
-
-    // Hook progress
-    let lastP = 0;
-    ffmpeg.on('progress', ({progress})=>{
-      if (typeof progress === 'number'){
-        const p = Math.max(0, Math.min(0.95, 0.1 + progress * 0.75));
-        if (p - lastP > 0.01){ setStatus('FFmpeg encoding WebP…', p); lastP = p; }
-      }
-    });
-
-    const ext = (sourceFile.name && sourceFile.name.includes('.')) ? sourceFile.name.split('.').pop() : 'mp4';
-    const inName = `input.${ext}`;
-    const outName = 'out.webp';
-
-    setStatus('Preparing input…', 0.04);
-    await ffmpeg.writeFile(inName, await fetchFile(sourceFile));
-
-    // Build filter chain: crop (if set) -> fps -> scale
-    const hasCrop = Number.isFinite(sourceX) && Number.isFinite(sourceY) && Number.isFinite(sourceWidth) && Number.isFinite(sourceHeight) && sourceWidth > 0 && sourceHeight > 0 && !(sourceX===0 && sourceY===0 && sourceWidth===video.videoWidth && sourceHeight===video.videoHeight);
-    const crop = hasCrop ? `crop=${sourceWidth}:${sourceHeight}:${sourceX}:${sourceY}` : null;
-    const vfParts = [];
-    if (crop) vfParts.push(crop);
-    vfParts.push(`fps=${targetFPS}`);
-    vfParts.push(`scale=${width}:${height}:flags=lanczos`);
-    const vf = vfParts.join(',');
-
-    setStatus('Encoding WebP…', 0.2);
-    await ffmpeg.exec(['-ss', ss, '-to', to, '-i', inName, '-vf', vf, '-vcodec', 'libwebp', '-lossless', '0', '-compression_level', '6', '-q:v', String(quality), '-loop', '0', '-preset', 'picture', '-an', '-vsync', '0', '-y', outName]);
-
-    const data = await ffmpeg.readFile(outName);
-    const blob = new Blob([data.buffer], {type:'image/webp'});
-    const url = setOutput(blob, 'webp', 'image/webp');
-    setStatus(`Done • ${(blob.size/1024/1024).toFixed(1)} MB`, 1);
-
-    // Update output metadata
-    const outputDuration = end - start;
-    updateOutputMetadata(blob, 'WebP', 'FFmpeg', width, height, targetFPS, outputDuration);
-
-    const img = new Image(); img.src = url; img.alt = 'Generated WebP (FFmpeg)';
-    preview.innerHTML = '';
-    preview.style.display = 'flex';
-    preview.style.alignItems = 'center';
-    preview.style.justifyContent = 'center';
-    preview.appendChild(img);
-  }
+  
 
   // ---------- WebM export (high color) ----------
   webmBtn?.addEventListener('click', async ()=>{
@@ -1555,8 +1424,24 @@ window._gifWorkerURL = (function() {
 
     const targetFPS = Number(chosenFps);
     const scale = Number(chosenScale);
-    const width = Math.max(1, Math.round(video.videoWidth * scale));
-    const height = Math.max(1, Math.round(video.videoHeight * scale));
+
+    // Apply crop selection if enabled; otherwise use full frame
+    let sourceX, sourceY, sourceWidth, sourceHeight;
+    let width, height;
+    if (cropEnabled && cropRegion) {
+      sourceX = Math.round(cropRegion.x * video.videoWidth);
+      sourceY = Math.round(cropRegion.y * video.videoHeight);
+      sourceWidth = Math.round(cropRegion.width * video.videoWidth);
+      sourceHeight = Math.round(cropRegion.height * video.videoHeight);
+      width = Math.max(1, Math.round(sourceWidth * scale));
+      height = Math.max(1, Math.round(sourceHeight * scale));
+    } else {
+      sourceX = 0; sourceY = 0;
+      sourceWidth = video.videoWidth; sourceHeight = video.videoHeight;
+      width = Math.max(1, Math.round(video.videoWidth * scale));
+      height = Math.max(1, Math.round(video.videoHeight * scale));
+    }
+
     canvas.width = width; canvas.height = height; ctx.imageSmoothingEnabled = false;
 
     const fileDur = duration && isFinite(duration) ? duration : (isFinite(video.duration)?video.duration:0);
@@ -1603,7 +1488,7 @@ window._gifWorkerURL = (function() {
           const t = meta.mediaTime || video.currentTime || 0;
           if (t + 1e-6 >= start && ((t - lastCapture) >= dt - 1e-6)){
             ctx.clearRect(0,0,width,height);
-            ctx.drawImage(video, 0, 0, width, height);
+            ctx.drawImage(video, sourceX, sourceY, sourceWidth, sourceHeight, 0, 0, width, height);
             lastCapture = t;
           }
           const rel = Math.max(0, Math.min(span, (t - start)));
@@ -1620,7 +1505,7 @@ window._gifWorkerURL = (function() {
           const t = video.currentTime || 0;
           if (t + 1e-6 >= start && (t - lastEmit) >= dt - 1e-6){
             ctx.clearRect(0,0,width,height);
-            ctx.drawImage(video, 0, 0, width, height);
+            ctx.drawImage(video, sourceX, sourceY, sourceWidth, sourceHeight, 0, 0, width, height);
             lastEmit = t;
           }
           const rel = Math.max(0, Math.min(span, (t - start)));
@@ -1635,16 +1520,40 @@ window._gifWorkerURL = (function() {
     rec.stop();
   });
 
-  // ---------- WebP export (animated via FFmpeg) ----------
+  // ---------- WebP export (animated via ffmpeg.wasm) ----------
+  let _ffmpeg = null;
+  let _ffmpegFetchFile = null;
+  async function ensureFFmpeg(){
+    if (!_ffmpeg){
+      const api = window.FFmpeg || window.ffmpeg || {};
+      const createFFmpeg = api.createFFmpeg || (api.FFmpeg && api.FFmpeg.createFFmpeg);
+      const fetchFile = api.fetchFile || (api.FFmpeg && api.FFmpeg.fetchFile);
+      _ffmpeg = createFFmpeg ? createFFmpeg({ log: false, corePath: 'js/ffmpeg-core.js' }) : null;
+      _ffmpegFetchFile = fetchFile || null;
+    }
+    if (!_ffmpeg) throw new Error('ffmpeg.wasm not available');
+    if (!_ffmpeg.isLoaded()){
+      setStatus('Loading encoder…', 0.02);
+      await _ffmpeg.load();
+    }
+  }
+
   webpBtn?.addEventListener('click', async ()=>{
     if (!video.src) return;
-
     enableConvert(false);
+    webpBtn.disabled = true;
+
+    try{
+      await ensureFFmpeg();
+    }catch(e){
+      setStatus('err', 'Failed to load encoder', 1);
+      webpBtn.disabled = false; enableConvert(true); return;
+    }
 
     const targetFPS = Number(chosenFps);
     const scale = Number(chosenScale);
 
-    // Compute source crop and output dimensions similar to GIF pipeline
+    // Compute crop/output dimensions
     let sourceX, sourceY, sourceWidth, sourceHeight;
     let width, height;
     if (cropEnabled && cropRegion) {
@@ -1655,75 +1564,90 @@ window._gifWorkerURL = (function() {
       width = Math.max(1, Math.round(sourceWidth * scale));
       height = Math.max(1, Math.round(sourceHeight * scale));
     } else {
-      sourceX = 0; sourceY = 0;
-      sourceWidth = video.videoWidth; sourceHeight = video.videoHeight;
+      sourceX = 0; sourceY = 0; sourceWidth = video.videoWidth; sourceHeight = video.videoHeight;
       width = Math.max(1, Math.round(video.videoWidth * scale));
       height = Math.max(1, Math.round(video.videoHeight * scale));
     }
 
-    canvas.width = width; canvas.height = height; ctx.imageSmoothingEnabled = false;
-
     const fileDur = duration && isFinite(duration) ? duration : (isFinite(video.duration)?video.duration:0);
-    const start = startTimeInput?.value;
-    const end = endTimeInput?.value;
+    let start = Math.max(0, Math.min(fileDur || 0, parseFloat(startTimeInput?.value)||0));
+    let end = Math.max(start, Math.min(fileDur || 0, parseFloat(endTimeInput?.value)||fileDur));
+    const minSpan = 1/Math.max(1, targetFPS);
+    if ((end - start) < minSpan) end = Math.min(fileDur, start + minSpan);
+    const span = Math.max(minSpan, (end - start) || minSpan);
+
+    // Build filter graph
+    const vf = [];
+    if (cropEnabled && cropRegion){
+      vf.push(`crop=${sourceWidth}:${sourceHeight}:${sourceX}:${sourceY}`);
+    }
+    vf.push(`fps=${targetFPS}`);
+    vf.push(`scale=${width}:${height}:flags=neighbor`);
+    const vfArg = vf.join(',');
+
+    // Prepare input
+    const inExt = (sourceFile && sourceFile.name && sourceFile.name.split('.').pop()) || 'mp4';
+    const inName = `input.${inExt}`;
+    const outName = 'out.webp';
 
     try{
-      await convertWebPWithFfmpeg({width, height, targetFPS, startTime: start, endTime: end, fileDur, sourceX, sourceY, sourceWidth, sourceHeight, quality: chosenWebpQuality});
-    }catch(e){
-      console.error(e);
-      setStatus('err', 'WebP encoding failed: ' + (e && e.message ? e.message : e), 1);
-    } finally {
+      setStatus('Preparing encoder…', 0.04);
+      try { _ffmpeg.FS('unlink', inName); }catch{}
+      try { _ffmpeg.FS('unlink', outName); }catch{}
+      const data = _ffmpegFetchFile ? await _ffmpegFetchFile(sourceFile) : new Uint8Array(await sourceFile.arrayBuffer());
+      _ffmpeg.FS('writeFile', inName, data);
+
+      // Progress callback
+      if (_ffmpeg.setProgress){
+        _ffmpeg.setProgress(({ ratio }) => {
+          const p = Math.max(0, Math.min(1, ratio||0));
+          setStatus(`Encoding WebP… ${Math.round(p*100)}%`, 0.1 + p*0.85);
+        });
+      }
+
+      const args = [
+        '-hide_banner',
+        '-i', inName,
+        '-ss', start.toFixed(3),
+        '-t', span.toFixed(3),
+        '-vf', vfArg,
+        '-an',
+        '-c:v', 'libwebp',
+        '-q:v', String(webpQuality || 75),
+        '-loop', '0',
+        '-vsync', '0',
+        outName
+      ];
+
+      setStatus('Starting WebP encode…', 0.08);
+      await _ffmpeg.run(...args);
+
+      const out = _ffmpeg.FS('readFile', outName);
+      const blob = new Blob([out.buffer], {type: 'image/webp'});
+      const url = setOutput(blob, 'webp', 'image/webp');
+      setStatus(`WebP ready • ${(blob.size/1024/1024).toFixed(1)} MB`, 1);
+
+      // Update output metadata
+      updateOutputMetadata(blob, 'WebP', 'ffmpeg.wasm', width, height, targetFPS, span);
+
+      const img = new Image(); img.src = url; img.alt = 'Generated WebP';
+      preview.innerHTML = '';
+      preview.style.display = 'flex';
+      preview.style.alignItems = 'center';
+      preview.style.justifyContent = 'center';
+      preview.appendChild(img);
+    }catch(err){
+      console.error(err);
+      setStatus('err', 'WebP export failed', 1);
+    }finally{
+      try { _ffmpeg.FS('unlink', inName); }catch{}
+      try { _ffmpeg.FS('unlink', outName); }catch{}
+      webpBtn.disabled = false;
       enableConvert(true);
     }
   });
 
-  // ---------- FFmpeg loader (WebAssembly) ----------
-  // Provides window._ffmpeg.loadFFMPEG(() => {}), and sets window._ffmpeg.ffmpeg/fetchFile
-  window._ffmpeg = window._ffmpeg || {};
-  window._ffmpeg.loadFFMPEG = window._ffmpeg.loadFFMPEG || (async (onStatus)=>{
-    if (window._ffmpeg.ffmpeg && window._ffmpeg.fetchFile) return;
-    try{
-      if (onStatus) onStatus('Loading FFmpeg modules…', 0.01);
-      
-      // Load FFmpeg from CDN
-      if (typeof FFmpeg === 'undefined') {
-        const script = document.createElement('script');
-        script.src = 'https://unpkg.com/@ffmpeg/ffmpeg@0.12.7/dist/umd/ffmpeg.js';
-        document.head.appendChild(script);
-        await new Promise((resolve, reject) => {
-          script.onload = resolve;
-          script.onerror = reject;
-        });
-      }
-      
-      if (onStatus) onStatus('Initializing FFmpeg…', 0.3);
-      
-      const { FFmpeg } = globalThis;
-      const { fetchFile } = FFmpeg;
-      
-      const ffmpeg = new FFmpeg();
-      ffmpeg.on('log', ({ message }) => {
-        console.log('FFmpeg:', message);
-      });
-      
-      if (onStatus) onStatus('Loading FFmpeg core…', 0.5);
-      
-      const baseURL = 'https://unpkg.com/@ffmpeg/core@0.12.4/dist/umd';
-      await ffmpeg.load({
-        coreURL: await fetchFile(`${baseURL}/ffmpeg-core.js`),
-        wasmURL: await fetchFile(`${baseURL}/ffmpeg-core.wasm`),
-      });
-      
-      if (onStatus) onStatus('FFmpeg ready', 1.0);
-      
-      window._ffmpeg.ffmpeg = ffmpeg;
-      window._ffmpeg.fetchFile = fetchFile;
-    }catch(e){
-      console.error('Failed to load FFmpeg', e);
-      if (onStatus) onStatus('FFmpeg load failed: ' + e.message);
-      throw e;
-    }
-  });
+  
 
   // ---------- GIF core (ByteArray + NeuQuant + Encoder) ----------
 
