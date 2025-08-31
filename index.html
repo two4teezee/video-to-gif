@@ -127,10 +127,6 @@
       transition: height 0.4s;
     }
 
-    .timeline:hover {
-      height: 12px;
-    }
-
     .timeline-marker {
       position: absolute;
       width: 8px;
@@ -151,10 +147,6 @@
 
     .timeline-marker:active {
       cursor: grabbing;
-    }
-
-    .timeline-marker:hover {
-      transform: translate(-50%, -50%) scale(1.2);
     }
 
     .start-marker::before {
@@ -261,9 +253,6 @@
       position: relative;
     }
 
-    .play-pause-btn:not(:disabled):hover {
-      transform: translateY(-1px);
-    }
     /* Crop functionality styles */
     .crop-overlay {
       position: absolute;
@@ -572,7 +561,7 @@ window._gifWorkerURL = (function() {
   const outputDur = el('outputDur');
   const outputEncoder = el('outputEncoder');
 
-  const FPS_OPTIONS = [5, 10, 12.5, 15, 30, 60];
+  const FPS_OPTIONS = [5, 10, 15, 30, 40, 45, 60];
   const SCALE_OPTIONS = [0.25, 0.5, 0.75, 1];
   let chosenFps = 30; // default
   let chosenScale = 1; // default
@@ -2140,17 +2129,13 @@ window._gifWorkerURL = (function() {
     updatePlayButton(isPlaying) {
       this.isPlaying = isPlaying;
       if (isPlaying) {
-        this.elements.playPauseBtn.textContent = 'Pause';
-        this.elements.playPauseBtn.style.backgroundColor = 'var(--accent)';
-        this.elements.playPauseBtn.style.color = 'white';
+        this.elements.playPauseBtn.textContent = 'Play';
+        this.elements.playPauseBtn.classList.add('active');
       } else {
         this.elements.playPauseBtn.textContent = 'Play';
-        this.elements.playPauseBtn.style.backgroundColor = '';
-        this.elements.playPauseBtn.style.color = '';
+        this.elements.playPauseBtn.classList.remove('active');
       }
     }
-
-
 
     handleKeyDown(e) {
       if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
