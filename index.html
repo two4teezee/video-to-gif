@@ -561,7 +561,7 @@ window._gifWorkerURL = (function() {
   const outputDur = el('outputDur');
   const outputEncoder = el('outputEncoder');
 
-  const FPS_OPTIONS = [5, 10, 15, 30, 40, 45, 60];
+  const FPS_OPTIONS = [5, 10, 15, 30, 40, 48, 60];
   const SCALE_OPTIONS = [0.25, 0.5, 0.75, 1];
   let chosenFps = 30; // default
   let chosenScale = 1; // default
@@ -1954,6 +1954,10 @@ window._gifWorkerURL = (function() {
 
       this.elements.startMarker.style.left = `${startPercent}%`;
       this.elements.endMarker.style.left = `${endPercent}%`;
+      
+      // Update timeline display text
+      this.elements.startTimeDisplay.textContent = this.formatTime(startTime);
+      this.elements.endTimeDisplay.textContent = this.formatTime(endTime);
     }
 
     updateDurationDisplay() {
