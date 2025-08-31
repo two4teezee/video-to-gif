@@ -91,7 +91,7 @@
     .panel[aria-label="Preview"] .canvas-wrap { flex: 1 1 auto; overflow: hidden; display: flex; align-items: stretch; justify-content: center; padding: 12px; min-height: 400px; }
     .preview { display: flex; gap: 12px; align-items: center; justify-content: center; }
     .preview .hint { color: var(--muted); opacity: .85; }
-    .preview img, .preview video { max-width: 100%; max-height: 460px; display: block; border-radius: 12px; background: #0b1022; border: 1px dashed var(--border); }
+    .preview img, .preview video { max-width: 100%; max-height: 460px; display: block; }
 
     /* Dev panel */
     #devPanel{ display:none; margin-top:10px; padding:10px; border-radius:12px; background: transparent; border:1px dashed var(--border); }
@@ -423,13 +423,13 @@
       <div class="canvas-wrap">
         <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 12px; width:100%; height: 100%;">
           <div style="display: flex; flex-direction: column; height: 100%;">
-            <div class="muted" style="margin-bottom:6px">Source</div>
+            <div class="muted" style="margin-bottom:20px">Source</div>
             <div style="flex-grow: 1;"></div>
             <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; flex-shrink: 0;">
-              <div class="video-wrapper" style="position: relative; width: 100%; max-height: 300px;">
-                <video id="srcPreview" class="srcPrev" muted playsinline style="width:100%; max-height:300px; object-fit: contain;"></video>
+              <div class="video-wrapper" style="position: relative; width: 100%; max-height: 460px;">
+                <video id="srcPreview" class="srcPrev" muted playsinline style="width:100%; max-height:460px; object-fit: contain;"></video>
               </div>
-              <div class="video-controls" style="width: 100%; margin-top: 8px; display: grid; grid-template-columns: 1fr 8fr 1fr; align-items: center;">
+              <div class="video-controls" style="width: 100%; margin-top: 8px; display: grid; grid-template-columns: 1fr 8.9fr; align-items: center; height: 50px">
                 <div class="playback-controls" style="display: flex; gap: 8px;">
                   <button class="play-pause-btn btn-ghost" disabled>Play</button>
                 </div>
@@ -460,11 +460,12 @@
             </div>
           </div>
           <div style="display: flex; flex-direction: column; height: 100%;">
-            <div class="muted" style="margin-bottom:6px">Output</div>
+            <div class="muted" style="margin-bottom:20px">Output</div>
             <div style="flex-grow: 1;"></div>
             <div class="preview" id="preview" style="min-height: 300px; flex-shrink: 0; display: flex; align-items: center; justify-content: center;">
               <div class="hint">GIF preview will appear here</div>
             </div>
+            <div class="video-controls" style="width: 100%; margin-top: 8px; display: grid; grid-template-columns: 1fr 8fr 1fr; align-items: center; height: 50px"></div>
             <div style="flex-grow: 1;"></div>
             <div class="output-meta-inset" id="outputMetaInset" style="margin-top:8px; padding:8px 10px; background:var(--bg); border:1px solid var(--border); border-radius:8px; font-size:12px;">
               <div class="muted" style="font-weight:600; margin-bottom:4px; font-size:11px; text-transform:uppercase; letter-spacing:0.05em;">Generated File Info</div>
