@@ -214,13 +214,13 @@
       flex-wrap: wrap;
     }
 
-    .time-input-group {
+    .input-group {
       display: flex;
       align-items: center;
       gap: 4px;
     }
 
-    .time-input {
+    .input {
       width: 80px;
       background: var(--panel);
       color: var(--text);
@@ -230,7 +230,7 @@
       font-size: 13px;
     }
 
-    .time-input:focus {
+    .input:focus {
       outline: none;
       border-color: var(--accent);
     }
@@ -333,66 +333,66 @@
           <input id="fileInput" type="file" accept="video/*" hidden />
         </div>
 
-        <div class="row">
-          <div class="control">
-            <label class="muted" style="font-size:13px">Output FPS</label>
-            <div class="seg" id="fpsSeg"></div>
-          </div>
+        <div class="control">
+          <label class="muted" style="font-size:13px">Output FPS</label>
+          <div class="seg" id="fpsSeg"></div>
         </div>
-        <div class="row">
-          <div class="control">
-            <label class="muted" style="font-size:13px">Scale</label>
-            <div class="seg" id="scaleSeg"></div>
-          </div>
+        <div class="control">
+          <label class="muted" style="font-size:13px">Scale</label>
+          <div class="seg" id="scaleSeg"></div>
         </div>
-        <div class="row">
-          <div class="control">
-            <label class="muted" style="font-size:13px">Palette quality</label>
-            <div class="seg" id="palPresetSeg"></div>
-          </div>
+        <div class="control">
+          <label class="muted" style="font-size:13px">Palette quality</label>
+          <div class="seg" id="palPresetSeg"></div>
         </div>
-        <div class="row">
-          <div class="control">
-            <label class="muted" style="font-size:13px">Encoder</label>
-            <div class="seg" id="encoderSeg"></div>
-          </div>
+        <div class="control">
+          <label class="muted" style="font-size:13px">Encoder</label>
+          <div class="seg" id="encoderSeg"></div>
         </div>
-        <div class="row">
-          <div class="control" style="display: grid;">
-            <label class="muted" style="font-size:13px">Dithering</label>
-            <select id="ditherSelect">
-              <option value="none" selected>None</option>
-              <option value="FloydSteinberg">Floyd-Steinberg</option>
-              <option value="FalseFloydSteinberg">False Floyd-Steinberg</option>
-              <option value="Stucki">Stucki</option>
-              <option value="Atkinson">Atkinson</option>
-            </select>
-          </div>
+        <div class="control" style="display: grid;">
+          <label class="muted" style="font-size:13px">Dithering</label>
+          <select id="ditherSelect">
+            <option value="none" selected>None</option>
+            <option value="FloydSteinberg">Floyd-Steinberg</option>
+            <option value="FalseFloydSteinberg">False Floyd-Steinberg</option>
+            <option value="Stucki">Stucki</option>
+            <option value="Atkinson">Atkinson</option>
+          </select>
         </div>
-
-        <div class="row">
-          <div class="control">
-            <label class="muted" style="font-size:13px">Start and Stop Times</label>
-            <div class="row" style="display: flex; justify-content: space-between;">
-              <small><label style="color: var(--ok)">Start:</label></small>
-              <div class="time-input-group">
-                <input type="number" id="startTime" class="time-input" value="0.00" min="0" step="0.01" pattern="\d*\.?\d{0,2}" style="-webkit-appearance: none; -moz-appearance: textfield;">
-              </div>
-              <small><label style="color: var(--danger)">End:</label></small>
-              <div class="time-input-group">
-                <input type="number" id="endTime" class="time-input" value="0.00" min="0" step="0.01" pattern="\d*\.?\d{0,2}" style="-webkit-appearance: none; -moz-appearance: textfield;">
-              </div>
+        <div class="control">
+          <label class="muted" style="font-size:13px">Start and Stop Times</label>
+          <div class="row" style="display: flex; justify-content: space-between;">
+            <small><label style="color: var(--ok)">Start:</label></small>
+            <div class="input-group">
+              <input type="number" id="startTime" class="input" value="0.00" min="0" step="0.01" pattern="\d*\.?\d{0,2}" style="-webkit-appearance: none; -moz-appearance: textfield;">
+            </div>
+            <small><label style="color: var(--danger)">End:</label></small>
+            <div class="input-group">
+              <input type="number" id="endTime" class="input" value="0.00" min="0" step="0.01" pattern="\d*\.?\d{0,2}" style="-webkit-appearance: none; -moz-appearance: textfield;">
             </div>
           </div>
         </div>
 
-        <button id="toggleCrop" class="btn-ghost">
-          <span>Enable Crop</span>
-          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M6.13 1L6 16a2 2 0 0 0 2 2h15"></path>
-            <path d="M1 6.13L16 6a2 2 0 0 1 2 2v15"></path>
-          </svg>
-        </button>
+        <div class="control">
+          <label class="muted" style="font-size:13px">Crop</label>
+          <div class="row" style="grid-template-columns: 1fr 1fr 1fr; justify-content: space-between;">
+            <button id="toggleCrop" class="btn-ghost">
+              <span>Enable</span>
+            </button>
+            <div class="row">
+              <small><label style="color: var(--text)">W:</label></small>
+              <div class="input-group">
+                <input type="number" id="cropWidth" class="input" min="1" step="1" style="-webkit-appearance: none; -moz-appearance: textfield;">
+              </div>
+            </div>
+            <div class="row">
+              <small><label style="color: var(--text)">H:</label></small>
+              <div class="input-group">
+                <input type="number" id="cropHeight" class="input" min="1" step="1" style="-webkit-appearance: none; -moz-appearance: textfield;">
+              </div>
+            </div>
+          </div>
+        </div>
 
         <div class="row" style="grid-template-columns: 1fr 1fr 1fr;">
           <button id="webpBtn" class="btn-primary" disabled>Export WebP</button>
@@ -2421,29 +2421,41 @@ window._gifWorkerURL = (function() {
   }
 
   function updateCropDimensions() {
-    const dimensions = document.getElementById('cropDimensions');
-    const sizeText = document.getElementById('cropSize');
     const videoPreview = document.getElementById('srcPreview');
-    
-    if (!dimensions || !sizeText || !videoPreview || !cropRegion) return;
+    if (!videoPreview || !cropRegion) return;
     
     const videoWidth = videoPreview.videoWidth;
     const videoHeight = videoPreview.videoHeight;
-    
     if (!videoWidth || !videoHeight) return;
     
     const pixelWidth = Math.round(cropRegion.width * videoWidth);
     const pixelHeight = Math.round(cropRegion.height * videoHeight);
     
-    const finalWidth = Math.round(pixelWidth * chosenScale);
-    const finalHeight = Math.round(pixelHeight * chosenScale);
-    
-    dimensions.style.display = 'block';
-    sizeText.innerHTML = `
-      Crop: <span style="color: var(--accent)">${pixelWidth} × ${pixelHeight}px</span>
-      <br>
-      Output: <span style="color: var(--ok)">${finalWidth} × ${finalHeight}px</span>
-    `;
+    // Sync inputs with current crop size
+    const widthInput = document.getElementById('cropWidth');
+    const heightInput = document.getElementById('cropHeight');
+    if (widthInput) {
+      widthInput.max = String(videoWidth);
+      if (document.activeElement !== widthInput) widthInput.value = String(pixelWidth);
+    }
+    if (heightInput) {
+      heightInput.max = String(videoHeight);
+      if (document.activeElement !== heightInput) heightInput.value = String(pixelHeight);
+    }
+
+    // Update size summary if present
+    const dimensions = document.getElementById('cropDimensions');
+    const sizeText = document.getElementById('cropSize');
+    if (dimensions && sizeText) {
+      const finalWidth = Math.round(pixelWidth * chosenScale);
+      const finalHeight = Math.round(pixelHeight * chosenScale);
+      dimensions.style.display = 'block';
+      sizeText.innerHTML = `
+        Crop: <span style="color: var(--accent)">${pixelWidth} × ${pixelHeight}px</span>
+        <br>
+        Output: <span style="color: var(--ok)">${finalWidth} × ${finalHeight}px</span>
+      `;
+    }
   }
 
   function updateOutputDimensions() {
@@ -2698,6 +2710,37 @@ window._gifWorkerURL = (function() {
     document.addEventListener('touchend', endDrag);
   }
 
+  // Allow typing into crop size inputs to resize the crop region
+  function handleCropWidthInput(e) {
+    const input = e && e.target ? e.target : document.getElementById('cropWidth');
+    const videoPreview = document.getElementById('srcPreview');
+    if (!input || !videoPreview || !videoPreview.videoWidth || !cropRegion) return;
+    let newWidthPx = Math.floor(Number(input.value));
+    if (!Number.isFinite(newWidthPx)) return;
+    newWidthPx = Math.max(1, Math.min(newWidthPx, videoPreview.videoWidth));
+    let normalized = newWidthPx / videoPreview.videoWidth;
+    normalized = Math.min(normalized, 1 - cropRegion.x);
+    normalized = Math.max(normalized, 1 / Math.max(1, videoPreview.videoWidth));
+    cropRegion.width = Math.round(normalized * 1000000) / 1000000;
+    updateCropRegionElement();
+    updateCropDimensions();
+  }
+
+  function handleCropHeightInput(e) {
+    const input = e && e.target ? e.target : document.getElementById('cropHeight');
+    const videoPreview = document.getElementById('srcPreview');
+    if (!input || !videoPreview || !videoPreview.videoHeight || !cropRegion) return;
+    let newHeightPx = Math.floor(Number(input.value));
+    if (!Number.isFinite(newHeightPx)) return;
+    newHeightPx = Math.max(1, Math.min(newHeightPx, videoPreview.videoHeight));
+    let normalized = newHeightPx / videoPreview.videoHeight;
+    normalized = Math.min(normalized, 1 - cropRegion.y);
+    normalized = Math.max(normalized, 1 / Math.max(1, videoPreview.videoHeight));
+    cropRegion.height = Math.round(normalized * 1000000) / 1000000;
+    updateCropRegionElement();
+    updateCropDimensions();
+  }
+
   // Initialize timeline when DOM is ready
   let timeline = null;
   document.addEventListener('DOMContentLoaded', () => {
@@ -2715,6 +2758,18 @@ window._gifWorkerURL = (function() {
     
     // Initialize crop functionality
     initializeCropping();
+
+    // Wire crop size input listeners (apply on change or Enter to avoid jitter while typing)
+    const widthInput = document.getElementById('cropWidth');
+    const heightInput = document.getElementById('cropHeight');
+    if (widthInput) {
+      widthInput.addEventListener('change', handleCropWidthInput);
+      widthInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') { handleCropWidthInput(e); widthInput.blur(); } });
+    }
+    if (heightInput) {
+      heightInput.addEventListener('change', handleCropHeightInput);
+      heightInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') { handleCropHeightInput(e); heightInput.blur(); } });
+    }
   });
   </script>
   <script>
