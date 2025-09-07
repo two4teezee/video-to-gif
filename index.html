@@ -627,8 +627,6 @@ window._gifWorkerURL = (function() {
       encoder: chosenEncoder,
       dither: chosenDither,
       compressionQuality: chosenCompressionQuality,
-      startTime: startTimeInput?.value || '0',
-      endTime: endTimeInput?.value || '0',
       cropEnabled: !!cropEnabled,
       cropRegion: cropRegion ? { ...cropRegion } : null
     };
@@ -686,8 +684,7 @@ window._gifWorkerURL = (function() {
         if (compressionQualityV) compressionQualityV.textContent = String(chosenCompressionQuality);
       }
     }
-    if (s.startTime != null && startTimeInput) startTimeInput.value = String(s.startTime);
-    if (s.endTime != null && endTimeInput) endTimeInput.value = String(s.endTime);
+    // Start/end times are intentionally not applied from presets
     if (s.cropRegion){
       cropRegion = { ...s.cropRegion };
       if (s.cropEnabled && !cropEnabled){
