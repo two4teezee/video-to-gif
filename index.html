@@ -874,7 +874,8 @@ window._gifWorkerURL = (function() {
     }).catch(()=>{});
 
     const vw = video.videoWidth, vh = video.videoHeight;
-    duration = isFinite(video.duration) ? video.duration : 0;
+    const safeDur = await getVideoDurationSafe(video);
+    duration = safeDur || 0;
 
     metaType.textContent = getFileType(file);
     metaRes.textContent = vw && vh ? `${vw} × ${vh}` : '—';
@@ -947,7 +948,55 @@ window._gifWorkerURL = (function() {
     });
   }
 
+  // Some WebM files initially report 0/Infinity duration. Attempt to derive it.
+  function getFiniteDurationFromSeekable(v){
+    try{
+      if (v.seekable && v.seekable.length){
+        const end = v.seekable.end(v.seekable.length - 1);
+        if (Number.isFinite(end) && end > 0) return end;
+      }
+    }catch{}
+    return 0;
+  }
 
+  async function getVideoDurationSafe(v){
+    const metaDur = Number.isFinite(v.duration) ? v.duration : 0;
+    if (metaDur > 0) return metaDur;
+    const seekableDur = getFiniteDurationFromSeekable(v);
+    if (seekableDur > 0) return seekableDur;
+    return new Promise(resolve => {
+      let resolved = false;
+      const tryResolve = () => {
+        const vd = Number.isFinite(v.duration) ? v.duration : 0;
+        const sk = getFiniteDurationFromSeekable(v);
+        const candidate = vd > 0 ? vd : sk;
+        if (candidate > 0 && !resolved){
+          resolved = true;
+          cleanup();
+          resolve(candidate);
+        }
+      };
+      const cleanup = () => {
+        v.removeEventListener('durationchange', onDurationChange);
+        v.removeEventListener('timeupdate', onTimeUpdate);
+        v.removeEventListener('loadeddata', onLoadedData);
+      };
+      const onDurationChange = () => tryResolve();
+      const onTimeUpdate = () => tryResolve();
+      const onLoadedData = () => tryResolve();
+      v.addEventListener('durationchange', onDurationChange);
+      v.addEventListener('timeupdate', onTimeUpdate);
+      v.addEventListener('loadeddata', onLoadedData);
+      try{ v.currentTime = 1e7; }catch{}
+      setTimeout(() => {
+        if (!resolved){
+          tryResolve();
+          cleanup();
+          resolve(0);
+        }
+      }, 1500);
+    });
+  }
 
   // Drag & drop
   drop.addEventListener('dragover', e=>{ e.preventDefault(); drop.style.borderColor = '#60a5fa'; });
@@ -1913,7 +1962,16 @@ window._gifWorkerURL = (function() {
 
     initializeEventListeners() {
       this.videoPreview.addEventListener('loadedmetadata', this.handleVideoLoad.bind(this));
+      this.videoPreview.addEventListener('durationchange', this.handleVideoLoad.bind(this));
       this.videoPreview.addEventListener('timeupdate', this.handleTimeUpdate.bind(this));
+      this.videoPreview.addEventListener('ended', () => {
+        if (!this.videoPreview.src) return;
+        const startTime = parseFloat(this.elements.startTimeInput.value) || 0;
+        if (this.isPlaying) {
+          this.videoPreview.currentTime = startTime;
+          this.videoPreview.play().catch(()=>{});
+        }
+      });
       this.elements.timeline.addEventListener('mousedown', this.handleTimelineClick.bind(this));
       
       [this.elements.startMarker, this.elements.endMarker].forEach(marker => {
@@ -1946,10 +2004,15 @@ window._gifWorkerURL = (function() {
       document.addEventListener('keydown', this.handleKeyDown.bind(this));
     }
 
-    handleVideoLoad() {
-      if (!this.videoPreview.duration) return;
-      
-      this.videoDuration = this.videoPreview.duration;
+    async handleVideoLoad() {
+      const metaDur = Number.isFinite(this.videoPreview.duration) ? this.videoPreview.duration : 0;
+      if (metaDur > 0) {
+        this.videoDuration = metaDur;
+      } else if (typeof getVideoDurationSafe === 'function') {
+        const d = await getVideoDurationSafe(this.videoPreview);
+        if (d > 0) this.videoDuration = d;
+      }
+      if (!this.videoDuration) return;
       
       // Ensure video is always muted
       this.videoPreview.muted = true;
@@ -2107,12 +2170,19 @@ window._gifWorkerURL = (function() {
         
         // Safety check: ensure minimum duration between start and end
         const minDuration = 0.1; // Minimum 0.1 seconds
-        if ((endTime - startTime) >= minDuration && currentTime >= endTime) {
+        const epsilon = 0.04; // ~40ms tolerance for timeupdate granularity/codecs
+        if ((endTime - startTime) >= minDuration && (currentTime >= (endTime - epsilon) || this.videoPreview.ended)) {
           // Loop back to start instead of pausing
           this.videoPreview.currentTime = startTime;
-        } else if ((endTime - startTime) < minDuration && currentTime >= (startTime + minDuration)) {
+          if (this.videoPreview.paused) {
+            this.videoPreview.play().catch(()=>{});
+          }
+        } else if ((endTime - startTime) < minDuration && currentTime >= (startTime + minDuration - epsilon)) {
           // If range is too small, loop with minimum duration
           this.videoPreview.currentTime = startTime;
+          if (this.videoPreview.paused) {
+            this.videoPreview.play().catch(()=>{});
+          }
         }
       }
     }
