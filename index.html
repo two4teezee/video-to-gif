@@ -346,7 +346,14 @@
           <div class="seg" id="palPresetSeg"></div>
         </div>
         <div class="control">
-          <label class="muted" style="font-size:13px">Encoder</label>
+          <label class="muted" style="font-size:13px">Compression quality</label>
+          <div class="row" style="align-items:center; gap:8px;">
+            <input id="compressionQuality" type="range" min="0" max="100" value="80">
+            <small id="compressionQualityV" class="muted">80</small>
+          </div>
+        </div>
+        <div class="control">
+          <label class="muted" style="font-size:13px">GIF Encoder</label>
           <div class="seg" id="encoderSeg"></div>
         </div>
         <div class="control" style="display: grid;">
@@ -552,6 +559,8 @@ window._gifWorkerURL = (function() {
   const webmBtn = el('webmBtn');
   const srcPreview = el('srcPreview');
   const encoderSeg = el('encoderSeg');
+  const compressionQuality = el('compressionQuality');
+  const compressionQualityV = el('compressionQualityV');
   const ditherSelect = el('ditherSelect');
   const downloadBtn = el('downloadBtn');
   const outputMetaInset = el('outputMetaInset');
@@ -571,6 +580,8 @@ window._gifWorkerURL = (function() {
   const ENCODER_OPTIONS = [{label:'gif.js', v:'gifjs'}, {label:'JavaScript', v:'js'}];
   let chosenEncoder = 'gifjs'; // default to gif.js encoder 
   let chosenDither = 'FloydSteinberg'; // default dithering method 
+  let chosenCompressionQuality = 80; // 0-100, default 80
+  let userSetCompressionQuality = false;
   // WebP export removed; quality options not needed
 
   // Crop functionality variables
@@ -610,9 +621,17 @@ window._gifWorkerURL = (function() {
     nqSample = v;
     // Map WebP quality to preset: Fast=60, Balanced=75, Film=95
     const label = PALETTE_PRESETS.find(p=>p.v===v)?.label || '';
-    if (label === 'Fast') webpQuality = 60;
-    else if (label === 'Balanced') webpQuality = 75;
-    else if (label === 'Film') webpQuality = 95;
+    if (!userSetCompressionQuality){
+      if (label === 'Fast') webpQuality = 60;
+      else if (label === 'Balanced') webpQuality = 75;
+      else if (label === 'Film') webpQuality = 95;
+      // reflect mapped quality in slider UI if present
+      if (compressionQuality){
+        chosenCompressionQuality = webpQuality;
+        compressionQuality.value = String(webpQuality);
+        if (compressionQualityV) compressionQualityV.textContent = String(webpQuality);
+      }
+    }
   }, nqSample);
 
   // Encoder options
@@ -620,13 +639,33 @@ window._gifWorkerURL = (function() {
     chosenEncoder = v;
   }, chosenEncoder);
 
-  // WebP quality mapped to palette preset (Fast=60, Balanced=75, Film=95)
-  let webpQuality = 75;
+  // WebP quality initialized from compression quality slider
+  let webpQuality = chosenCompressionQuality;
+
+  // Compression quality slider wiring (0-100; lower = lower quality, higher compression)
+  if (compressionQuality){
+    compressionQuality.value = String(chosenCompressionQuality);
+    if (compressionQualityV) compressionQualityV.textContent = String(chosenCompressionQuality);
+    compressionQuality.addEventListener('input', (e) => {
+      const val = Number(e.target.value);
+      chosenCompressionQuality = Math.max(0, Math.min(100, Number.isFinite(val) ? val : 80));
+      if (compressionQualityV) compressionQualityV.textContent = String(chosenCompressionQuality);
+      userSetCompressionQuality = true;
+      webpQuality = chosenCompressionQuality;
+    });
+  }
 
   // Dithering dropdown
   ditherSelect?.addEventListener('change', (e) => {
     chosenDither = e.target.value;
   });
+
+  function mapQualityToWebMBitrate(q /* 0-100 */){
+    const clamped = Math.max(0, Math.min(100, Number(q) || 0));
+    const min = 500000; // 0.5 Mbps
+    const max = 8000000; // 8 Mbps
+    return Math.round(min + (clamped/100) * (max - min));
+  }
 
   function setStatus(a, b, c){
     // Supports two forms:
@@ -1441,7 +1480,7 @@ window._gifWorkerURL = (function() {
 
     const stream = canvas.captureStream(targetFPS);
     const mime = (MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported('video/webm;codecs=vp9')) ? 'video/webm;codecs=vp9' : ((MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported('video/webm;codecs=vp8')) ? 'video/webm;codecs=vp8' : 'video/webm');
-    const rec = new MediaRecorder(stream, {mimeType: mime, videoBitsPerSecond: 3000000});
+    const rec = new MediaRecorder(stream, {mimeType: mime, videoBitsPerSecond: mapQualityToWebMBitrate(chosenCompressionQuality)});
     const chunks = [];
     rec.ondataavailable = e=> { if (e.data && e.data.size) chunks.push(e.data); };
     rec.onstop = async ()=>{
@@ -1603,7 +1642,7 @@ window._gifWorkerURL = (function() {
         '-vf', vfArg,
         '-an',
         '-c:v', 'libwebp',
-        '-q:v', String(webpQuality || 75),
+        '-q:v', String((userSetCompressionQuality ? chosenCompressionQuality : webpQuality) || 80),
         '-loop', '0',
         '-vsync', '0',
         outName
