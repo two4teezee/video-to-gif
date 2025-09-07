@@ -310,6 +310,9 @@
       cursor: grabbing !important;
     }
 
+    /* Preset rows */
+    .presets-row { display: flex; justify-content: space-between; align-items: center; }
+
   </style>
 </head>
 <body>
@@ -410,6 +413,25 @@
           <button id="resetBtn" class="btn-ghost" disabled>Reset</button>
           <button id="devToggleBtn" class="btn-ghost" aria-controls="devPanel" aria-expanded="false" title="Toggle dev panel">Dev</button>
         </div>
+        
+        <!-- Presets UI (Save/Load slots) -->
+        <div class="presets-row">
+          <label class="muted" for="presets-save">Save Presets</label>
+          <div><button class="btn-ghost" id="saveP1" title="Save to preset 1">1</button></div>
+          <div><button class="btn-ghost" id="saveP2" title="Save to preset 2">2</button></div>
+          <div><button class="btn-ghost" id="saveP3" title="Save to preset 3">3</button></div>
+          <div><button class="btn-ghost" id="saveP4" title="Save to preset 4">4</button></div>
+          <div><button class="btn-ghost" id="saveP5" title="Save to preset 5">5</button></div>
+        </div>
+        <div class="presets-row">
+          <label class="muted" for="presets-load">Load Presets</label>
+          <div><button class="btn-ghost" id="loadP1" title="Load preset 1">1</button></div>
+          <div><button class="btn-ghost" id="loadP2" title="Load preset 2">2</button></div>
+          <div><button class="btn-ghost" id="loadP3" title="Load preset 3">3</button></div>
+          <div><button class="btn-ghost" id="loadP4" title="Load preset 4">4</button></div>
+          <div><button class="btn-ghost" id="loadP5" title="Load preset 5">5</button></div>
+        </div>
+        
         </div>
 
         
@@ -571,6 +593,18 @@ window._gifWorkerURL = (function() {
   const outputDur = el('outputDur');
   const outputEncoder = el('outputEncoder');
 
+  // Preset buttons
+  const saveP1 = document.getElementById('saveP1');
+  const saveP2 = document.getElementById('saveP2');
+  const saveP3 = document.getElementById('saveP3');
+  const saveP4 = document.getElementById('saveP4');
+  const saveP5 = document.getElementById('saveP5');
+  const loadP1 = document.getElementById('loadP1');
+  const loadP2 = document.getElementById('loadP2');
+  const loadP3 = document.getElementById('loadP3');
+  const loadP4 = document.getElementById('loadP4');
+  const loadP5 = document.getElementById('loadP5');
+
   const FPS_OPTIONS = [5, 10, 15, 30, 40, 48, 60];
   const SCALE_OPTIONS = [0.25, 0.5, 0.75, 1];
   let chosenFps = 30; // default
@@ -583,6 +617,110 @@ window._gifWorkerURL = (function() {
   let chosenCompressionQuality = 80; // 0-100, default 80
   let userSetCompressionQuality = false;
   // WebP export removed; quality options not needed
+
+  // ---- Preset serialization ----
+  function serializeSettings(){
+    return {
+      fps: chosenFps,
+      scale: chosenScale,
+      paletteSample: nqSample,
+      encoder: chosenEncoder,
+      dither: chosenDither,
+      compressionQuality: chosenCompressionQuality,
+      startTime: startTimeInput?.value || '0',
+      endTime: endTimeInput?.value || '0',
+      cropEnabled: !!cropEnabled,
+      cropRegion: cropRegion ? { ...cropRegion } : null
+    };
+  }
+
+  function setActivePreset(n){
+    [1,2,3,4,5].forEach(i => {
+      const btn = document.getElementById(`loadP${i}`);
+      if (!btn) return;
+      if (i === n) { btn.classList.add('active'); btn.setAttribute('aria-pressed','true'); }
+      else { btn.classList.remove('active'); btn.setAttribute('aria-pressed','false'); }
+    });
+  }
+
+  function applySettings(s){
+    if (!s) return;
+    if (typeof s.fps === 'number'){
+      chosenFps = s.fps;
+      // Reflect into segment UI
+      [...fpsSeg.querySelectorAll('button')].forEach(b=>{
+        const v = Number(b.dataset.value);
+        b.classList.toggle('active', v === chosenFps);
+      });
+    }
+    if (typeof s.scale === 'number'){
+      chosenScale = s.scale;
+      [...scaleSeg.querySelectorAll('button')].forEach(b=>{
+        const v = Number(b.dataset.value);
+        b.classList.toggle('active', v === chosenScale);
+      });
+      if (cropEnabled) updateCropDimensions(); else updateOutputDimensions();
+    }
+    if (typeof s.paletteSample === 'number'){
+      nqSample = s.paletteSample;
+      [...palPresetSeg.querySelectorAll('button')].forEach(b=>{
+        const v = Number(b.dataset.value);
+        b.classList.toggle('active', v === nqSample);
+      });
+    }
+    if (typeof s.encoder === 'string'){
+      chosenEncoder = s.encoder;
+      [...encoderSeg.querySelectorAll('button')].forEach(b=>{
+        const v = String(b.dataset.value);
+        b.classList.toggle('active', v === chosenEncoder);
+      });
+    }
+    if (typeof s.dither === 'string'){
+      chosenDither = s.dither;
+      if (ditherSelect) ditherSelect.value = chosenDither;
+    }
+    if (typeof s.compressionQuality === 'number'){
+      chosenCompressionQuality = Math.max(0, Math.min(100, s.compressionQuality));
+      if (compressionQuality){
+        compressionQuality.value = String(chosenCompressionQuality);
+        if (compressionQualityV) compressionQualityV.textContent = String(chosenCompressionQuality);
+      }
+    }
+    if (s.startTime != null && startTimeInput) startTimeInput.value = String(s.startTime);
+    if (s.endTime != null && endTimeInput) endTimeInput.value = String(s.endTime);
+    if (s.cropRegion){
+      cropRegion = { ...s.cropRegion };
+      if (s.cropEnabled && !cropEnabled){
+        // enable cropping UI if a region is provided
+        const toggleButton = document.getElementById('toggleCrop');
+        if (toggleButton) toggleCrop();
+      } else if (!s.cropEnabled && cropEnabled){
+        const toggleButton = document.getElementById('toggleCrop');
+        if (toggleButton) toggleCrop();
+      } else {
+        updateCropRegionElement();
+      }
+    } else if (s.cropEnabled === false && cropEnabled){
+      const toggleButton = document.getElementById('toggleCrop');
+      if (toggleButton) toggleCrop();
+    }
+  }
+
+  function presetKey(n){ return `video-to-gif-preset-${n}`; }
+  function attachPresetHandlers(n){
+    const saveBtn = document.getElementById(`saveP${n}`);
+    const loadBtn = document.getElementById(`loadP${n}`);
+    if (saveBtn) saveBtn.addEventListener('click', () => {
+      try { localStorage.setItem(presetKey(n), JSON.stringify(serializeSettings())); setStatus('Preset '+n+' saved.'); }
+      catch { setStatus('err', 'Could not save preset '+n+'.'); }
+    });
+    if (loadBtn) loadBtn.addEventListener('click', () => {
+      try { const txt = localStorage.getItem(presetKey(n)); if (!txt){ setStatus('warn', 'Preset '+n+' empty.'); return; }
+        applySettings(JSON.parse(txt)); setActivePreset(n); setStatus('Preset '+n+' loaded.'); }
+      catch { setStatus('err', 'Could not load preset '+n+'.'); }
+    });
+  }
+  [1,2,3,4,5].forEach(attachPresetHandlers);
 
   // Crop functionality variables
   let cropEnabled = false;
@@ -659,6 +797,10 @@ window._gifWorkerURL = (function() {
   ditherSelect?.addEventListener('change', (e) => {
     chosenDither = e.target.value;
   });
+  // Initialize chosenDither from current dropdown value so presets reflect UI default
+  if (ditherSelect) {
+    chosenDither = ditherSelect.value || 'none';
+  }
 
   function mapQualityToWebMBitrate(q /* 0-100 */){
     const clamped = Math.max(0, Math.min(100, Number(q) || 0));
