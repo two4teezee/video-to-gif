@@ -1689,10 +1689,19 @@ window._gifWorkerURL = (function() {
       webmBtn.disabled = false;
     };
 
-    rec.start();
-
     try { video.pause(); } catch {}
     await seekTo(video, start);
+    // Draw first frame before starting recorder to avoid initial black frame
+    ctx.clearRect(0,0,width,height);
+    ctx.drawImage(video, sourceX, sourceY, sourceWidth, sourceHeight, 0, 0, width, height);
+    const capTrack = stream.getVideoTracks && stream.getVideoTracks()[0];
+    if (capTrack && typeof capTrack.requestFrame === 'function'){
+      try { capTrack.requestFrame(); } catch {}
+    }
+    // Ensure the first drawn frame is flushed to the stream before starting
+    await new Promise(r => requestAnimationFrame(r));
+    rec.start();
+
     video.muted = true; try{ await video.play(); }catch{}
 
     setStatus('Recording WebM…', 0.06);
@@ -1703,7 +1712,7 @@ window._gifWorkerURL = (function() {
         let lastCapture = start - 10;
         const step = (now, meta)=>{
           const t = meta.mediaTime || video.currentTime || 0;
-          if (t + 1e-6 >= start && ((t - lastCapture) >= dt - 1e-6)){
+          if (t + 1e-6 >= start && t < (end - (dt/2)) && ((t - lastCapture) >= dt - 1e-6)){
             ctx.clearRect(0,0,width,height);
             ctx.drawImage(video, sourceX, sourceY, sourceWidth, sourceHeight, 0, 0, width, height);
             lastCapture = t;
@@ -1720,7 +1729,7 @@ window._gifWorkerURL = (function() {
       await new Promise((resolve)=>{
         let lastEmit = start - 10; const iv = setInterval(()=>{
           const t = video.currentTime || 0;
-          if (t + 1e-6 >= start && (t - lastEmit) >= dt - 1e-6){
+          if (t + 1e-6 >= start && t < (end - (dt/2)) && (t - lastEmit) >= dt - 1e-6){
             ctx.clearRect(0,0,width,height);
             ctx.drawImage(video, sourceX, sourceY, sourceWidth, sourceHeight, 0, 0, width, height);
             lastEmit = t;
@@ -1734,7 +1743,10 @@ window._gifWorkerURL = (function() {
     }
 
     try{ video.pause(); }catch{}
-    rec.stop();
+    // Stop the canvas capture track first to avoid trailing black frames, then stop recorder
+    const endTrack = stream.getVideoTracks && stream.getVideoTracks()[0];
+    if (endTrack){ try{ endTrack.stop(); }catch{} }
+    try{ rec.stop(); }catch{}
   });
 
   // ---------- WebP export (animated via ffmpeg.wasm) ----------
