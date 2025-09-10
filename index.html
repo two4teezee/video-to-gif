@@ -202,6 +202,11 @@
       color: var(--text);
     }
 
+    .range-times { display: flex; flex-direction: column; align-items: flex-end; line-height: 1.1; }
+    .current-time { color: var(--text); }
+    .start-time { color: var(--ok); }
+    .end-time { color: var(--danger); }
+
     .duration-time {
       color: var(--accent);
       font-weight: 500;
@@ -355,10 +360,7 @@
             <small id="compressionQualityV" class="muted">80</small>
           </div>
         </div>
-        <div class="control">
-          <label class="muted" style="font-size:13px">GIF Encoder</label>
-          <div class="seg" id="encoderSeg"></div>
-        </div>
+
         <div class="control" style="display: grid;">
           <label class="muted" style="font-size:13px">Dithering</label>
           <select id="ditherSelect">
@@ -469,9 +471,9 @@
                     <div class="playhead"></div>
                   </div>
                   <div class="marker-times">
-                    <span class="start-time">0:00</span>
+                    <span class="current-time">0:00</span>
                     <span class="duration-time"></span>
-                    <span class="end-time">0:00</span>
+                    <span class="range-times"><span class="start-time">0:00</span><span class="end-time">0:00</span></span>
                   </div>
                 </div>
               </div>
@@ -580,7 +582,6 @@ window._gifWorkerURL = (function() {
   const webpBtn = el('webpBtn');
   const webmBtn = el('webmBtn');
   const srcPreview = el('srcPreview');
-  const encoderSeg = el('encoderSeg');
   const compressionQuality = el('compressionQuality');
   const compressionQualityV = el('compressionQualityV');
   const ditherSelect = el('ditherSelect');
@@ -611,7 +612,6 @@ window._gifWorkerURL = (function() {
   let chosenScale = 1; // default
   const PALETTE_PRESETS = [{label:'Fast', v:20}, {label:'Balanced', v:10}, {label:'Film', v:3}];
   let nqSample = 3; // NeuQuant sample factor (lower = better quality) 
-  const ENCODER_OPTIONS = [{label:'gif.js', v:'gifjs'}, {label:'JavaScript', v:'js'}];
   let chosenEncoder = 'gifjs'; // default to gif.js encoder 
   let chosenDither = 'FloydSteinberg'; // default dithering method 
   let chosenCompressionQuality = 80; // 0-100, default 80
@@ -666,13 +666,7 @@ window._gifWorkerURL = (function() {
         b.classList.toggle('active', v === nqSample);
       });
     }
-    if (typeof s.encoder === 'string'){
-      chosenEncoder = s.encoder;
-      [...encoderSeg.querySelectorAll('button')].forEach(b=>{
-        const v = String(b.dataset.value);
-        b.classList.toggle('active', v === chosenEncoder);
-      });
-    }
+
     if (typeof s.dither === 'string'){
       chosenDither = s.dither;
       if (ditherSelect) ditherSelect.value = chosenDither;
@@ -768,12 +762,6 @@ window._gifWorkerURL = (function() {
       }
     }
   }, nqSample);
-
-  // Encoder options
-  makeSeg(encoderSeg, ENCODER_OPTIONS.map(p=>p.v), v => ENCODER_OPTIONS.find(p=>p.v===v).label, v => {
-    chosenEncoder = v;
-  }, chosenEncoder);
-
   // WebP quality initialized from compression quality slider
   let webpQuality = chosenCompressionQuality;
 
@@ -1174,124 +1162,7 @@ window._gifWorkerURL = (function() {
     
   });
 
-  // ---------- Palette helpers ----------
-  function clamp8(v){ v = Math.round(v); return v<0?0:(v>255?255:v); }
-  const bayer4 = [0,8,2,10,12,4,14,6,3,11,1,9,15,7,13,5];
-
-  function mapImageToIndexed(img, w,h, nq, colorTab, ditherMode, strength){
-    const data = img.data; const out = new Uint8Array(w*h);
-    const mode = ditherMode || 'none';
-    if (mode === 'floyd'){
-      // Build RGB palette (convert from NeuQuant BGR)
-      const pal = new Float32Array(256*3);
-      for (let i=0, j=0; i<colorTab.length && j<pal.length; i+=3, j+=3){
-        pal[j] = colorTab[i+2]; pal[j+1] = colorTab[i+1]; pal[j+2] = colorTab[i];
-      }
-      const work = new Float32Array(w*h*3);
-      for (let p=0, q=0; p<data.length && q<work.length; p+=4, q+=3){
-        work[q] = data[p]; work[q+1] = data[p+1]; work[q+2] = data[p+2];
-      }
-      const s = Math.max(0, Math.min(1, (Number(strength)||0) / 48));
-      for (let y=0; y<h; y++){
-        for (let x=0; x<w; x++){
-          const idx = y*w + x; const off = idx*3;
-          let r = work[off], g = work[off+1], b = work[off+2];
-          const pi = nq.map(b,g,r);
-          out[idx] = pi;
-          const pr = pal[pi*3], pg = pal[pi*3+1], pb = pal[pi*3+2];
-          const er = (r - pr) * s, eg = (g - pg) * s, eb = (b - pb) * s;
-          // Distribute error (Floyd–Steinberg)
-          const add = (xx,yy,wf)=>{
-            if (xx<0||xx>=w||yy<0||yy>=h) return;
-            const ii = (yy*w + xx)*3; work[ii] += er*wf; work[ii+1] += eg*wf; work[ii+2] += eb*wf;
-          };
-          add(x+1, y  , 7/16);
-          add(x-1, y+1, 3/16);
-          add(x  , y+1, 5/16);
-          add(x+1, y+1, 1/16);
-        }
-      }
-      return out;
-    } else {
-      let k=0;
-      for (let y=0;y<h;y++){
-        for (let x=0;x<w;x++,k++){
-          let i = (k<<2);
-          let r = data[i], g = data[i+1], b = data[i+2];
-          if (mode === 'ordered'){
-            const t = bayer4[((y&3)<<2) | (x&3)]/16 - 0.5; const off = t * 2 * (Number(strength)||0); r = clamp8(r+off); g = clamp8(g+off); b = clamp8(b+off);
-          }
-          out[k] = nq.map(b,g,r); // NeuQuant expects B,G,R
-        }
-      }
-      return out;
-    }
-  }
-
-  async function buildGlobalPalette(start, end, width, height, targetFPS){
-    const MAX_SAMPLES = Number(devSampleCap?.value || 20000000);
-    const STEP = Math.max(1, Number(devPixStep?.value || 4));
-    const samples = [];
-
-    await seekTo(video, start);
-    video.muted = true; try{ await video.play(); }catch{}
-
-    setStatus('Building global palette…', 0.02);
-
-    const useRVFC = ('requestVideoFrameCallback' in HTMLVideoElement.prototype);
-    await new Promise((resolve)=>{
-      function take(){
-        ctx.drawImage(video,0,0,width,height);
-        const data = ctx.getImageData(0,0,width,height).data;
-        for (let y=0; y<height && samples.length < MAX_SAMPLES*3; y+=STEP){
-          let row = y*width*4;
-          for (let x=0; x<width && samples.length < MAX_SAMPLES*3; x+=STEP){
-            const i = row + x*4; // BGR order for NeuQuant
-            samples.push(data[i+2], data[i+1], data[i]);
-          }
-        }
-      }
-      if (useRVFC){
-        const step = (now, meta)=>{
-          const t = meta.mediaTime || video.currentTime || 0; if (t <= end + 1e-6) take();
-          if (samples.length >= MAX_SAMPLES*3 || t >= end - 0.002 || video.ended){ resolve(); return; }
-          video.requestVideoFrameCallback(step);
-        };
-        video.requestVideoFrameCallback(step);
-      } else {
-        const iv = setInterval(()=>{
-          const t = video.currentTime || 0; if (t <= end + 1e-6) take();
-          if (samples.length >= MAX_SAMPLES*3 || t >= end - 0.002 || video.ended){ clearInterval(iv); resolve(); }
-        }, Math.max(15, (1000/targetFPS)|0));
-      }
-    });
-    try{ video.pause(); }catch{}
-
-    const arr = new Uint8Array(samples);
-    const nq = new NeuQuant(arr, nqSample);
-    const colorTab = nq.process();
-    return { nq, colorTab };
-  }
-
-  function buildLocalPaletteFromImage(img, width, height){
-    const MAX_SAMPLES = Number(devSampleCap?.value || 20000000);
-    const STEP = Math.max(1, Number(devPixStep?.value || 4));
-    const limit = Math.min(MAX_SAMPLES, width*height);
-    const data = img.data;
-    const arr = new Uint8Array(Math.min(limit*3, width*height*3));
-    let s = 0;
-    for (let y=0; y<height && s < arr.length; y+=STEP){
-      let row = y*width*4;
-      for (let x=0; x<width && s < arr.length; x+=STEP){
-        const i = row + x*4; // BGR order for NeuQuant
-        arr[s++] = data[i+2]; arr[s++] = data[i+1]; arr[s++] = data[i];
-      }
-    }
-    const samples = arr.subarray(0, s);
-    const nq = new NeuQuant(samples, nqSample);
-    const colorTab = nq.process();
-    return { nq, colorTab };
-  }
+  // ---------- Palette helpers (JavaScript GIF encoder removed) ----------
 
   // ---------- gif.js conversion pipeline ----------
   async function convertGifWithGifJS({width, height, targetFPS, startTime, endTime, fileDur, scale, sourceX, sourceY, sourceWidth, sourceHeight}){
@@ -1457,178 +1328,19 @@ window._gifWorkerURL = (function() {
     canvas.width = width; canvas.height = height;
     ctx.imageSmoothingEnabled = false;
 
-    const tmpCanvas = document.createElement('canvas');
-    tmpCanvas.width = width; tmpCanvas.height = height;
-    const tmpCtx = tmpCanvas.getContext('2d', { willReadFrequently: true });
-
-    const dt = 1 / targetFPS;
     const fileDur = duration && isFinite(duration) ? duration : (isFinite(video.duration)?video.duration:0);
-    let start = Math.max(0, Math.min(fileDur || 0, parseFloat(startTimeInput?.value)||0));
-    let end = Math.max(start, Math.min(fileDur || 0, parseFloat(endTimeInput?.value)||fileDur));
-    const minSpan = 1/targetFPS; if ((end - start) < minSpan) end = Math.min(fileDur, start + minSpan);
-    const span = Math.max(minSpan, (end - start) || minSpan);
 
-    const useGlobal = devGlobal ? devGlobal.checked : true;
-    const dither = chosenDither !== 'none';
-    const ditherMode = chosenDither === 'FloydSteinberg' ? 'floyd' : 'none';
-    const ditherStrength = Number(devDitherS?.value || 18);
 
-    // Route to appropriate encoder based on selection
-    if (chosenEncoder === 'gifjs'){
-      try{
-        await convertGifWithGifJS({width, height, targetFPS, startTime: startTimeInput?.value, endTime: endTimeInput?.value, fileDur, scale, sourceX, sourceY, sourceWidth, sourceHeight});
-        enableConvert(true);
-        return;
-      }catch(e){
-        console.error(e);
-        setStatus('err', 'gif.js encoder failed: ' + (e && e.message ? e.message : e), 1);
-        enableConvert(true);
-        return;
-      }
-    }
-
-    
-
-    const enc = new GIFEncoder(width, height);
-
-    let nq = null, colorTab = null;
-    if (useGlobal){
-      ({nq, colorTab} = await buildGlobalPalette(start, end, width, height, targetFPS));
-      enc.setGlobalPalette(colorTab);
-    }
-
-    enc.setRepeat(0);
-    enc.setDelay(Math.round(1000 / targetFPS)); // default; per-frame override below
-    enc.setQuality(nqSample);
-    enc.start();
-
-    setStatus('Starting playback…', 0.03);
-
-    try { video.pause(); } catch {}
-    await seekTo(video, start);
-
-    video.muted = true;
-    try { await video.play(); } catch(e) {}
-
-    setStatus('Extracting & encoding frames…', 0.06);
-
-    const useRVFC = ('requestVideoFrameCallback' in HTMLVideoElement.prototype);
-
-    let pendingTime = null;
-    let pendingIndexed = null; // Uint8Array
-    let pendingImage = null;   // ImageData fallback
-    let pendingPalette = null; // Uint8Array for local palette
-    let emittedCs = 0;
-    let accumSec = 0;
-
-    function emitPending(nextTime){
-      if (pendingTime === null) return;
-      const delta = Math.max(0, nextTime - pendingTime);
-      accumSec += delta;
-      const totalCs = Math.max(1, Math.round(accumSec * 100));
-      const csThis = Math.max(1, totalCs - emittedCs);
-      enc.setDelay(csThis * 10);
-      if (useGlobal){
-        enc.addIndexedFrame(pendingIndexed);
-      } else {
-        if (pendingIndexed && pendingPalette){
-          enc.setFramePalette(pendingPalette);
-          enc.addIndexedFrame(pendingIndexed);
-        } else if (pendingImage){
-          tmpCtx.putImageData(pendingImage, 0, 0);
-          enc.addFrame(tmpCtx);
-        }
-      }
-      emittedCs += csThis;
-      pendingIndexed = null; pendingImage = null; pendingPalette = null;
-    }
-
-    if (useRVFC){
-      await new Promise((resolve)=>{
-        let lastCapture = start - 10;
-        const step = (now, meta)=>{
-          const t = meta.mediaTime || video.currentTime || 0;
-          if (t + 1e-6 >= start && ((t - lastCapture) >= dt - 1e-6 || pendingTime === null)){
-            ctx.clearRect(0,0,width,height);
-            ctx.drawImage(video, sourceX, sourceY, sourceWidth, sourceHeight, 0, 0, width, height);
-            const img = ctx.getImageData(0,0,width,height);
-            if (useGlobal){
-              const idx = mapImageToIndexed(img, width, height, nq, colorTab, ditherMode, ditherStrength);
-              if (pendingTime === null){ pendingTime = t; pendingIndexed = idx; }
-              else { emitPending(t); pendingTime = t; pendingIndexed = idx; }
-            } else {
-              const lp = buildLocalPaletteFromImage(img, width, height);
-              const idx = mapImageToIndexed(img, width, height, lp.nq, lp.colorTab, ditherMode, ditherStrength);
-              if (pendingTime === null){ pendingTime = t; pendingIndexed = idx; pendingPalette = lp.colorTab; }
-              else { emitPending(t); pendingTime = t; pendingIndexed = idx; pendingPalette = lp.colorTab; }
-            }
-            lastCapture = t;
-          }
-          const rel = Math.max(0, Math.min(span, (t - start)));
-          const p = span ? Math.min(0.95, (rel/span)*0.95) : 0.5;
-          setStatus(`Encoding frame ${Math.max(0, Math.floor(emittedCs/Math.max(1, Math.round(100/targetFPS)))) + (pendingTime!==null?1:0)} (t=${Math.max(start, Math.min(t,end)).toFixed(2)}s)…`, 0.06 + p);
-          if (t >= end - 0.002 || video.ended){ resolve(); return; }
-          video.requestVideoFrameCallback(step);
-        };
-        video.requestVideoFrameCallback(step);
-      });
-      try { video.pause(); } catch {}
-    } else {
-      await new Promise((resolve)=>{
-        let lastEmit = start - 10;
-        const iv = setInterval(()=>{
-          const t = video.currentTime || 0;
-          if (t + 1e-6 >= start && (t - lastEmit) >= dt - 1e-6){
-            ctx.clearRect(0,0,width,height);
-            ctx.drawImage(video, sourceX, sourceY, sourceWidth, sourceHeight, 0, 0, width, height);
-            const img = ctx.getImageData(0,0,width,height);
-            if (useGlobal){
-              const idx = mapImageToIndexed(img, width, height, nq, colorTab, ditherMode, ditherStrength);
-              if (pendingTime === null){ pendingTime = t; pendingIndexed = idx; }
-              else { emitPending(t); pendingTime = t; pendingIndexed = idx; }
-            } else {
-              const lp = buildLocalPaletteFromImage(img, width, height);
-              const idx = mapImageToIndexed(img, width, height, lp.nq, lp.colorTab, ditherMode, ditherStrength);
-              if (pendingTime === null){ pendingTime = t; pendingIndexed = idx; pendingPalette = lp.colorTab; }
-              else { emitPending(t); pendingTime = t; pendingIndexed = idx; pendingPalette = lp.colorTab; }
-            }
-            lastEmit = t;
-          }
-          const rel = Math.max(0, Math.min(span, (t - start)));
-          const p = span ? Math.min(0.95, (rel/span)*0.95) : 0.5;
-          setStatus(`Encoding frame … (t=${Math.max(start, Math.min(t,end)).toFixed(2)}s)…`, 0.06 + p);
-          if (t >= end - 0.002 || video.ended){ clearInterval(iv); resolve(); }
-        }, Math.max(15, (1000/targetFPS)|0));
-      });
-    }
-
-    emitPending(end);
-
-    setStatus('Finalizing GIF…', 0.97);
-    try { enc.finish(); } catch(e) {
+    try{
+      await convertGifWithGifJS({width, height, targetFPS, startTime: startTimeInput?.value, endTime: endTimeInput?.value, fileDur, scale, sourceX, sourceY, sourceWidth, sourceHeight});
+      enableConvert(true);
+      return;
+    }catch(e){
       console.error(e);
-      setStatus('err', 'Failed to finalize GIF: ' + (e && e.message ? e.message : e), 1);
+      setStatus('err', 'gif.js encoder failed: ' + (e && e.message ? e.message : e), 1);
       enableConvert(true);
       return;
     }
-
-    const blob = enc.stream().getBlob();
-    const url = setOutput(blob, 'gif', 'image/gif');
-
-    setStatus(`Done • ${(blob.size/1024/1024).toFixed(1)} MB`, 1);
-    
-    // Update output metadata
-    const outputDuration = end - start;
-    updateOutputMetadata(blob, 'GIF', 'JavaScript', width, height, targetFPS, outputDuration);
-
-    const img = new Image(); img.src = url; img.alt = 'Generated GIF';
-    preview.innerHTML = '';
-    preview.style.display = 'flex';
-    preview.style.alignItems = 'center';
-    preview.style.justifyContent = 'center';
-    preview.appendChild(img);
-
-    enableConvert(true);
   });
 
   
@@ -2085,6 +1797,8 @@ window._gifWorkerURL = (function() {
       this.videoDuration = 0;
       this.isScrubbingPlayhead = false;
       this.wasPlaying = false;
+      this._rafId = null;
+      this._vfcHandle = null;
       
       // Always keep video muted
       this.videoPreview.muted = true;
@@ -2101,6 +1815,7 @@ window._gifWorkerURL = (function() {
         timeline: document.querySelector('.timeline'),
         startMarker: document.querySelector('.start-marker'),
         endMarker: document.querySelector('.end-marker'),
+        currentTimeDisplay: document.querySelector('.current-time'),
         startTimeDisplay: document.querySelector('.start-time'),
         endTimeDisplay: document.querySelector('.end-time'),
         startTimeInput: document.getElementById('startTime'),
@@ -2135,17 +1850,8 @@ window._gifWorkerURL = (function() {
       this.elements.playPauseBtn.addEventListener('click', this.togglePlayPause.bind(this));
       this.videoPreview.addEventListener('pause', () => this.updatePlayButton(false));
       this.videoPreview.addEventListener('play', () => this.updatePlayButton(true));
-      
-      // Add debounced input handling for real-time preview while typing
-      this.inputDebounceTimer = null;
-      
-      const debouncedInputHandler = (e) => {
-        clearTimeout(this.inputDebounceTimer);
-        this.inputDebounceTimer = setTimeout(() => this.handleTimeInputChange(e), 300);
-      };
-      
-      this.elements.startTimeInput.addEventListener('input', debouncedInputHandler);
-      this.elements.endTimeInput.addEventListener('input', debouncedInputHandler);
+      this.videoPreview.addEventListener('seeking', () => this.updatePlayhead());
+      this.videoPreview.addEventListener('ratechange', () => { if (this.isPlaying) this.startSmoothTicker(); });
       
       // Also handle immediate change events (when user finishes editing)
       this.elements.startTimeInput.addEventListener('change', (e) => this.handleTimeInputChange(e));
@@ -2169,6 +1875,9 @@ window._gifWorkerURL = (function() {
       this.videoPreview.muted = true;
       
       // Update time displays
+      if (this.elements.currentTimeDisplay) {
+        this.elements.currentTimeDisplay.textContent = this.formatTime(0);
+      }
       this.elements.startTimeDisplay.textContent = this.formatTime(0);
       this.elements.endTimeDisplay.textContent = this.formatTime(this.videoDuration);
       
@@ -2210,6 +1919,9 @@ window._gifWorkerURL = (function() {
       this.elements.endMarker.style.left = `${endPercent}%`;
       
       // Update timeline display text
+      if (this.elements.currentTimeDisplay) {
+        this.elements.currentTimeDisplay.textContent = this.formatTime(this.videoPreview.currentTime || startTime);
+      }
       this.elements.startTimeDisplay.textContent = this.formatTime(startTime);
       this.elements.endTimeDisplay.textContent = this.formatTime(endTime);
     }
@@ -2247,6 +1959,9 @@ window._gifWorkerURL = (function() {
       
       this.videoPreview.currentTime = time;
       this.updatePlayhead();
+      if (this.elements && this.elements.currentTimeDisplay) {
+        this.elements.currentTimeDisplay.textContent = this.formatTime(this.videoPreview.currentTime || 0);
+      }
     }
 
     handleMarkerDragStart(e) {
@@ -2312,6 +2027,9 @@ window._gifWorkerURL = (function() {
 
     handleTimeUpdate() {
       this.updatePlayhead();
+      if (this.elements && this.elements.currentTimeDisplay) {
+        this.elements.currentTimeDisplay.textContent = this.formatTime(this.videoPreview.currentTime || 0);
+      }
       
       // Continuous loop between trim handles when playing
       if (this.isPlaying) {
@@ -2358,6 +2076,9 @@ window._gifWorkerURL = (function() {
       
       this.elements.playhead.style.left = `${position}%`;
       this.elements.playhead.style.display = 'block';
+      if (this.elements && this.elements.currentTimeDisplay) {
+        this.elements.currentTimeDisplay.textContent = this.formatTime(currentTime || 0);
+      }
     }
 
     handleTimeInputChange(e) {
@@ -2372,15 +2093,24 @@ window._gifWorkerURL = (function() {
           this.videoPreview.currentTime = newTime;
         }
       }
+      if (this.elements && this.elements.currentTimeDisplay) {
+        this.elements.currentTimeDisplay.textContent = this.formatTime(this.videoPreview.currentTime || 0);
+      }
     }
 
     togglePlayPause() {
       if (!this.videoPreview.src) return;
       
       if (this.videoPreview.paused) {
-        // Start playback from the start trim handle
+        // Start playback from the current playhead position (fallback to start if out of range)
+        const duration = Number.isFinite(this.videoPreview.duration) ? this.videoPreview.duration : 0;
         const startTime = parseFloat(this.elements.startTimeInput.value) || 0;
-        this.videoPreview.currentTime = startTime;
+        const endTime = parseFloat(this.elements.endTimeInput.value) || duration;
+        let resumeTime = this.videoPreview.currentTime;
+        if (!Number.isFinite(resumeTime) || resumeTime < startTime || resumeTime > endTime) {
+          resumeTime = startTime;
+        }
+        this.videoPreview.currentTime = resumeTime;
         
         this.videoPreview.play().catch(() => {
           this.isPlaying = false;
@@ -2396,9 +2126,44 @@ window._gifWorkerURL = (function() {
       if (isPlaying) {
         this.elements.playPauseBtn.textContent = 'Play';
         this.elements.playPauseBtn.classList.add('active');
+        this.startSmoothTicker();
       } else {
         this.elements.playPauseBtn.textContent = 'Play';
         this.elements.playPauseBtn.classList.remove('active');
+        this.stopSmoothTicker();
+      }
+    }
+
+    startSmoothTicker() {
+      // Prefer video frame callbacks when available for smoother sync
+      if (typeof this.videoPreview.requestVideoFrameCallback === 'function') {
+        if (this._vfcHandle) return;
+        const tick = () => {
+          if (!this.isPlaying) { this._vfcHandle = null; return; }
+          this.updatePlayhead();
+          this._vfcHandle = this.videoPreview.requestVideoFrameCallback(tick);
+        };
+        this._vfcHandle = this.videoPreview.requestVideoFrameCallback(tick);
+        return;
+      }
+      // Fallback to rAF
+      if (this._rafId) return;
+      const loop = () => {
+        if (!this.isPlaying) { this._rafId = null; return; }
+        this.updatePlayhead();
+        this._rafId = requestAnimationFrame(loop);
+      };
+      this._rafId = requestAnimationFrame(loop);
+    }
+
+    stopSmoothTicker() {
+      if (this._rafId) {
+        cancelAnimationFrame(this._rafId);
+        this._rafId = null;
+      }
+      if (this._vfcHandle && typeof this.videoPreview.cancelVideoFrameCallback === 'function') {
+        try { this.videoPreview.cancelVideoFrameCallback(this._vfcHandle); } catch {}
+        this._vfcHandle = null;
       }
     }
 
@@ -2448,6 +2213,9 @@ window._gifWorkerURL = (function() {
       
       this.updateMarkerPositions();
       this.updateDurationDisplay();
+      if (this.elements && this.elements.currentTimeDisplay) {
+        this.elements.currentTimeDisplay.textContent = this.formatTime(this.videoPreview.currentTime || 0);
+      }
     }
 
     stepFrame(direction) {
